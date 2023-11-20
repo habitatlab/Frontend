@@ -1,0 +1,13 @@
+/* LOGS */
+export const GET_LOGS = "GET_LOGS"
+export const GET_LOGS_SUCCESS = "GET_LOGS_SUCCESS"
+export const GET_LOGS_FAIL = "GET_LOGS_FAIL"
+export const ADD_LOGS = "ADD_LOGS"
+export const ADD_LOGS_SUCCESS = "ADD_LOGS_SUCCESS"
+export const ADD_LOGS_FAIL = "ADD_LOGS_FAIL"
+export const UPDATE_LOG = "UPDATE_LOG"
+export const UPDATE_LOG_SUCCESS = "UPDATE_LOG_SUCCESS"
+export const UPDATE_LOG_FAIL = "UPDATE_LOG_FAIL"
+export const DELETE_LOG = "DELETE_LOG"
+export const DELETE_LOG_SUCCESS = "DELETE_LOG_SUCCESS"
+export const DELETE_LOG_FAIL = "DELETE_LOG_FAIL"
