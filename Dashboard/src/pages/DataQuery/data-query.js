@@ -18,6 +18,18 @@ const DataQuery = props => {
   }, [results])
 
 
+  function secondsToHms(d) {
+    d = Number(d);
+    var h = Math.floor(d / 3600);
+    var m = Math.floor(d % 3600 / 60);
+    var s = Math.floor(d % 3600 % 60);
+
+    var hDisplay = h > 0 ? h + (h == 1 ? " hour, " : " hours, ") : "";
+    var mDisplay = m > 0 ? m + (m == 1 ? " minute, " : " minutes, ") : "";
+    var sDisplay = s > 0 ? s + (s == 1 ? " second" : " seconds") : "";
+    return hDisplay + mDisplay + sDisplay; 
+ }
+
  function updateStartDate(newDate) {
    console.log(newDate);
    setStartDate(newDate)
@@ -172,28 +184,45 @@ const DataQuery = props => {
                  <Row style={{ paddingBottom: '10px'}}>
                     <Col md={3}>
                   <div>
-		     <a href={"http://rat-burrow:5001/"+result.location}>
-                         <img width="200" src={"http://rat-burrow:5001/"+result.thumb}/></a>
+		     <a href={"<file server url>"+result.location}>
+                         <img width="200" src={"<file server url>"+result.thumb}/></a>
                   </div>
                      </Col>
 		     <Col md={9}>
 		     <Row>
-		          <a href={"http://rat-burrow:5001/"+result.location}>Download</a>
+		          <a href={"<file server url>"+result.location}>Right-click to download</a>
                      </Row>
 	   <Row>
-	  	        <b>Start Timestamp: {result.timestamp} </b>  
+		     <Col>
+	  	        <b>Start Timestamp:</b>
+		     </Col>
+		     <Col>
+		        {new Date(result.timestamp).toString()}
+		     </Col>
 		</Row>
-		      <Row>
-                        <b>Camera: </b> {result.camera}
-                    </Row>
                      <Row>
-                        <b>Number Of Frames: </b> {result.duration}
+		        <Col>
+                           <b>Video Duration: </b>
+		        </Col>
+		        <Col>
+		           {secondsToHms(result.duration/result.fps)}
+		        </Col>
                     </Row>
                       <Row>
-                        <b>FPS: </b> {result.fps}
+		        <Col>
+                        <b>FPS: </b>
+		         </Col>
+		         <Col>
+		           {result.fps}
+		         </Col>
                     </Row>
 		     <Row>
-		        <b>Frame Dimensions: </b> {result.width} x {result.height}
+		        <Col>
+		           <b>Dimensions: </b>
+		        </Col>
+		        <Col>
+		          {result.width} x {result.height}
+		        </Col>
 	            </Row>
 		     </Col>
 		   </Row>
@@ -210,8 +239,9 @@ const DataQuery = props => {
 }
 
 const mapStateToProps = ({ dataquery }) => {
+  const sortedResults = dataquery.results.sort((a, b) => (a.timestamp > b.timestamp) ? 1 : -1);
    return ({
-      results: dataquery.results,
+      results: sortedResults,
   })
 }
 

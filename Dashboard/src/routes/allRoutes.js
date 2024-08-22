@@ -16,7 +16,7 @@ import LockScreen from "../pages/AuthenticationInner/auth-lock-screen"
 import AnimalHealth from "../pages/AnimalHealth/daily-log"
 import DataQuery from "../pages/DataQuery/data-query"
 import BurrowControl from "../pages/BurrowControl/burrow-control"
-
+import MiscVideos from "../pages/MiscVideos/miscvideos"
 
 const userRoutes = [
   { path: "/daily-log", component: AnimalHealth },
@@ -32,6 +32,7 @@ const authRoutes = [
   { path: "/login", component: Login },
   { path: "/forgot-password", component: ForgetPwd },
   { path: "/register", component: Register },
+  { path: "/miscvideos", component: MiscVideos },
 
   // Authentication Inner
   { path: "/pages-login", component: Login1 },

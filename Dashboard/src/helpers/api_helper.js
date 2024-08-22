@@ -1,7 +1,7 @@
 import axios from "axios"
 
 //pass new generated access token here
-const API_URL = "http://localhost:5001/"
+const API_URL = "http://10.102.20.75:5001/api"
 
 const axiosApi = axios.create({
   baseURL: API_URL,
@@ -14,6 +14,7 @@ axiosApi.interceptors.response.use(
 )
 
 export async function get(url, config = {}) {
+  console.log(url + "::::" + data)
   return await axiosApi.get(url, { ...config })
      .then(response => response.data)
 }

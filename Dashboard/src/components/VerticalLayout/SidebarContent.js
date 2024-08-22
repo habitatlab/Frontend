@@ -75,20 +75,20 @@ const SidebarContent = props => {
 	  <li>
 	    <Link to="/burrow-control" className="waves-effect">
 	      <i className="mdi mdi-camera-control"></i>
-	      <span>{props.t("Burrow Control")}</span>
+	      <span>{props.t("Device Control/Status")}</span>
 	    </Link>
 	  </li>
 
-	  <li>
-	    <Link to="/occupancy" className=" waves-effect">
-	      <i className="bx bx-calendar"></i>
-	      <span>{props.t("Cage Occupancy")}</span>
-	    </Link>
-	  </li>
- <li>
+	   <li>
             <Link to="/dataquery" className=" waves-effect">
               <i className="bx bx-search-alt-2"></i>
-              <span>{props.t("Data Query")}</span>
+              <span>{props.t("Data Visualization")}</span>
+            </Link>
+          </li>
+           <li>
+            <Link to="/miscvideos" className=" waves-effect">
+              <i className="bx bx-search-alt-2"></i>
+              <span>{props.t("Miscellaneous Videos")}</span>
             </Link>
           </li>
 
