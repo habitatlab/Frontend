@@ -205,9 +205,13 @@ export const getDiagnosticResults = location => get(`${location}`)
 
 export const submitQuery = query => post(url.DATA_QUERY, query)
 
+export const fetchExperiments = () => get(url.GET_EXPERIMENTS)
+
 export const addAnimal = animal => post(url.ADD_ANIMAL, animal)
 
 export const getAnimals = () => get(url.GET_ANIMALS)
+
+export const filterLocations = () => get(url.FILTER_LOCATIONS)
 
 export const updateAnimal = animal => put(url.UPDATE_ANIMAL, animal)
 

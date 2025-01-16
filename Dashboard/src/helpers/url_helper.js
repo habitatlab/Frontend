@@ -7,6 +7,7 @@ export const POST_FAKE_PASSWORD_FORGET = "/fake-forget-pwd"
 export const POST_FAKE_JWT_PASSWORD_FORGET = "/jwt-forget-pwd"
 export const SOCIAL_LOGIN = "/social-login"
 
+
 //PROFILE
 export const POST_EDIT_JWT_PROFILE = "/post-jwt-profile"
 export const POST_EDIT_PROFILE = "/post-fake-profile"
@@ -25,11 +26,14 @@ export const ADD_LOGS = "/dailylogs"
 export const UPDATE_LOG = "/dailylogs"
 export const DELETE_LOG = "/dailylogs"
 
+export const FILTER_LOCATIONS = "/locations"
+
 export const GET_ANIMALS = "/animal"
 export const ADD_ANIMAL = "/animal"
 export const UPDATE_ANIMAL = "/animal"
 export const DELETE_ANIMAL = "/animal"
-export const DATA_QUERY = "/query"
+export const DATA_QUERY = "/api/query"
+export const GET_EXPERIMENTS = "/api/experiments"
 export const DIAGNOSTIC_RESULTS = "/"
 
 export const PROFILE = "/profile"

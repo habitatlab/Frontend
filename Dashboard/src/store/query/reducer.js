@@ -1,7 +1,8 @@
-import { SUBMIT_QUERY, SUBMIT_QUERY_SUCCESS, SUBMIT_QUERY_FAIL } from "./actionTypes"
+import { SUBMIT_QUERY, SUBMIT_QUERY_SUCCESS, SUBMIT_QUERY_FAIL, GET_EXPERIMENTS_SUCCESS, GET_EXPERIMENTS_FAIL } from "./actionTypes"
 
 const INIT_STATE = {
   results: [],
+  experiments: [],
   error: {},
 }
 
@@ -15,6 +16,18 @@ const dataquery = (state = INIT_STATE, action) => {
       }
 
     case SUBMIT_QUERY_FAIL:
+      return {
+        ...state,
+        error: action.payload,
+      }
+     case GET_EXPERIMENTS_SUCCESS:
+	console.log(action.payload)
+      return {
+        ...state,
+        experiments: action.payload.experiments,
+      }
+
+    case GET_EXPERIMENTS_FAIL:
       return {
         ...state,
         error: action.payload,

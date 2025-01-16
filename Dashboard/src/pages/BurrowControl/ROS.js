@@ -5,7 +5,7 @@ import PropTypes from 'prop-types'
 
 const rosObj = {
   ROS: new ROSLIB.Ros(),
-  url: "ws://rosbridge.com:9090",
+  url: "ws://localhost:9090",
   isConnected: false,
   ROSConfirmedConnected: false,
   autoconnect: false,
