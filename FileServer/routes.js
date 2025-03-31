@@ -3,9 +3,13 @@ const express = require("express")
 const DailyLog = require("./models/DailyLog") 
 const Animal = require("./models/Animal")
 const User = require("./models/User")
+const Experiments = require ("./models/Experiments")
+const AnnotationTimeline = require ("./models/Annotations")
 const Recordings = require ("./models/Recordings")
 const Trackings = require ("./models/Trackings")
 const router = express.Router()
+
+const { v4: uuidv4 } = require("uuid");
 
 // Get all daily logs
 router.get("/dailylogs", async (req, res) => {
@@ -109,8 +113,7 @@ router.post("/query", async (req, res) => {
 
 router.get("/experiments", async (req, res) => {
  try {
-     console.log("sdsdgsfd")
-     const experiments = await Recordings.find({
+     const experiments = await Experiments.find({
     });
      const result = {
          "experiments": experiments 
@@ -120,9 +123,109 @@ router.get("/experiments", async (req, res) => {
    } catch (e) {
       console.log(e)
       res.status(404)
-      res.send({ error: "Problem querying recordings" })
+      res.send({ error: "Problem querying experiments" })
    }
 })
+
+router.post("/dataset", async (req, res) => {
+ try {
+     const query = req.body
+     console.log(req)
+     console.log(query)
+     const videos = await Recordings.find({
+          rig: query.rig,
+	  trial: query.trial,
+	  cohort: query.cohort,
+	  dataset: query.dataset
+    });
+     const result = {
+         "videos": videos
+     }
+      res.send(result)
+
+   } catch (e) {
+      console.log(e)
+      res.status(404)
+      res.send({ error: "Problem querying datasets" })
+   }
+})
+
+router.get("/annotations", async (req, res) => {
+  try {
+    const filter = {};
+
+    // Only include non-empty values
+    if (req.query.rig) filter.rig = req.query.rig;
+    if (req.query.trial) filter.trial = req.query.trial;
+    if (req.query.cohort) filter.cohort = req.query.cohort;
+    if (req.query.dataset) filter.dataset = req.query.dataset;
+
+    const timelines = await AnnotationTimeline.find(filter);
+    console.log(timelines)
+    res.json(timelines);
+  } catch (error) {
+    res.status(500).send({ error: "Failed to fetch annotation timelines" });
+  }
+});
+
+router.post("/annotations", async (req, res) => {
+  try {
+    const timelineData = {
+      ...req.body,
+      id: req.body.id || uuidv4(),             // ensure unique ID
+      createdDate: req.body.createdDate || new Date(), // override or default
+    };
+
+    const newTimeline = new AnnotationTimeline(timelineData);
+    const saved = await newTimeline.save();
+
+    res.status(201).json(saved);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ error: "Failed to create annotation timeline" });
+  }
+});
+
+router.put("/annotations", async (req, res) => {
+  try {
+    const { _id, ...updates } = req.body;
+    console.log ("Updating timeline with id " + _id + " and updates " + updates)
+    if (!_id) {
+      return res.status(400).send({ error: "Missing _id in request body" });
+    }
+
+    const updatedTimeline = await AnnotationTimeline.findByIdAndUpdate(
+      _id,
+      { $set: updates },
+      { new: true } // Return the updated document
+    );
+
+    if (!updatedTimeline) {
+      return res.status(404).send({ error: "Timeline not found" });
+    }
+
+    console.log(updatedTimeline)
+
+    res.json(updatedTimeline);
+  } catch (error) {
+    res.status(500).send({ error: "Failed to update annotation timeline" });
+  }
+});
+
+router.delete("/annotations/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await AnnotationTimeline.findByIdAndDelete(id);
+
+    if (!result) {
+      return res.status(404).send({ error: "Timeline not found" });
+    }
+
+    res.json({ deleted: true, id });
+  } catch (error) {
+    res.status(500).send({ error: "Failed to delete annotation timeline" });
+  }
+});
 
 router.put("/dailylogs", async (req, res) => {
     try {
