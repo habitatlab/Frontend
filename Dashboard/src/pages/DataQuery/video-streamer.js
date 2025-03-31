@@ -1,8 +1,18 @@
 import React, { useEffect, useState, useRef } from "react";
+import ReactSlider from 'react-slider';
+import { v4 as uuidv4 } from 'uuid';
 import {
     Collapse,
     Row,
     Col,
+    Modal,
+    ModalBody,
+    ModalFooter,
+    ModalHeader,
+    Form,
+    FormGroup,
+    Label,
+    Input,
     Button,
     Card,
     CardHeader,
@@ -11,9 +21,11 @@ import {
 } from "reactstrap";
 import { connect } from "react-redux";
 import { io } from "socket.io-client";
-import { getExperiments } from "../../store/query/actions";
+import {getExperiments, getDataset, addAnnotationTimeline,
+    updateAnnotationTimeline, deleteAnnotationTimeline, getAnnotationTimeline} from "../../store/query/actions";
 
-const AnnotatedTimeline = ({ timeline, videoDuration, startTime, currentTime }) => {
+const AnnotatedTimeline = ({ timeline, videoDuration, startTime,
+                              onSelectAnnotation, currentTime }) => {
     return (
         <div style={{ margin: "20px 0" }}>
             {/* Colored horizontal line */}
@@ -34,7 +46,7 @@ const AnnotatedTimeline = ({ timeline, videoDuration, startTime, currentTime }) 
                             style={{
                                 position: "absolute",
                                 top: "-5px",
-                                left: `${((annotation.timestamp - startTime) / videoDuration) * 100}%`,
+                                left: `${((annotation.start_timestamp - startTime) / videoDuration) * 100}%`,
                                 width: "12px",
                                 height: "12px",
                                 backgroundColor: "white",
@@ -42,7 +54,8 @@ const AnnotatedTimeline = ({ timeline, videoDuration, startTime, currentTime }) 
                                 borderRadius: "50%",
                                 cursor: "pointer",
                             }}
-                            title={`Timestamp: ${annotation.timestamp}`}
+                            onClick={() => onSelectAnnotation(annotation)}
+                            title={`Timestamp: ${annotation.start_timestamp}`}
                         />
                     );
                 })}
@@ -53,23 +66,35 @@ const AnnotatedTimeline = ({ timeline, videoDuration, startTime, currentTime }) 
 
 
 const VideoStreamer = (props) => {
-    const { onFetchExperiments, experiments } = props;
+    const { onFetchExperiments, onFetchDataset, onAddAnnotationTimeline,
+        onDeleteAnnotationTimeline, onFetchAnnotationTimelines,
+        onUpdateAnnotationTimeline, timelines,
+        rigs, datasetVideos } = props;
+    const datasetVideosRef = useRef(null);
+    const [selectedRig, setSelectedRig] = useState(null);
+    const [selectedExperiment, setSelectedExperiment] = useState(null);
+    const [selectedDataset, setSelectedDataset] = useState(null);
+
+    const [showModal, setShowModal] = useState(false);
+    const [newTimelineName, setNewTimelineName] = useState("");
+    const [newTimelineOwner, setNewTimelineOwner] = useState("");
+    const [newTimelineColor, setNewTimelineColor] = useState("#007bff");
+
+    const [selectedTimelineId, setSelectedTimelineId] = useState(null);
+    const [selectedAnnotation, setSelectedAnnotation] = useState(null);
+    const [annotationMode, setAnnotationMode] = useState(false);
+    const [annotationStart, setAnnotationStart] = useState(null);
+    const [annotationEnd, setAnnotationEnd] = useState(null);
+    const [annotationNote, setAnnotationNote] = useState("");
+    const [zoomVisible, setZoomVisible] = useState(false);
+    const [drawing, setDrawing] = useState(false);
+    const [boundingBox, setBoundingBox] = useState(null)
     const [socket, setSocket] = useState(null);
     const [frameSrc, setFrameSrc] = useState("");
     const [open, setOpen] = useState(null);
     const [currentTimes, setCurrentTimes] = useState({});
-    const [currentExperiment, setCurrentExperiment] = useState({});
+    const [currentExperiment, setCurrentExperiment] = useState(null);
     const currentTimestampRef = useRef();
-    const [timelines, setTimelines] = useState([
-        {
-            id: 1,
-            color: "blue",
-            annotations: [
-                { timestamp: 1721840323000 }, // 07/24/2024, 09:38:43 AM
-                { timestamp: 1721840523000 }, // 07/24/2024, 09:42:03 AM
-            ],
-        }
-    ]);
     const [currentFrameIndex, setCurrentFrameIndex] = useState(0);
     const [currentVideo, setCurrentVideo] = useState("");
     const [fps, setFps] = useState(0);
@@ -77,7 +102,8 @@ const VideoStreamer = (props) => {
     const [streamId, setStreamId] = useState(''); // Stream ID returned from server
     const [streaming, setStreaming] = useState(false); // Flag to track streaming state
     const [seekFrame, setSeekFrame] = useState(0); // Frame number to start from
-    const canvasRef = useRef(new Map());
+    const canvasRef = useRef();
+    const currentExperimentRef = useRef(null);
     const annotationsMapRef = useRef(new Map()); // UseRef for concurrent access
 
     const findGapsInTimestamps = (experiment) => {
@@ -106,7 +132,7 @@ const VideoStreamer = (props) => {
 
         onFetchExperiments();
 
-        const socket = io("http://10.101.10.85:8765", {
+        const socket = io("http://10.101.10.93:8765", {
             transports: ["websocket"],
             upgrade: false,
         });
@@ -119,6 +145,26 @@ const VideoStreamer = (props) => {
         socket.on('stream_id', (data) => {
             console.log('Stream ID generated',data);
             setStreamId(data.sid)
+        });
+
+        socket.on("end_of_video",  () => {
+            const videos = datasetVideosRef.current?.videos;
+            if (!videos || videos.length === 0) {
+                console.warn("No datasetVideos loaded yet.");
+                return;
+            }
+
+            const nextVideo = videos.find(
+                (v) => new Date(v.start_timestamp).getTime() > currentTimestampRef.current
+            );
+
+            if (nextVideo) {
+                const nextStartTime = new Date(nextVideo.start_timestamp).getTime();
+                console.log("⏭ Automatically jumping to next video at", nextStartTime);
+                handleSliderChange(nextStartTime + 2); // Ensure it's in range
+            } else {
+                console.log("✅ All videos complete.");
+            }
         });
 
         socket.on('preview_frame', (data) => {
@@ -260,6 +306,8 @@ const VideoStreamer = (props) => {
 
     });
 
+
+
     socket.on('disconnect', () => {
       console.log('Socket.io connection disconnected');
     });
@@ -269,14 +317,72 @@ const VideoStreamer = (props) => {
     };
   }, []);
 
-    const addTimeline = () => {
-        const newTimeline = {
-            id: timelines.length + 1,
-            color: getRandomColor(),
-            annotations: []
+    useEffect(() => {
+        if (selectedRig && selectedExperiment && selectedDataset) {
+            let query = {
+                rig: selectedRig.rig,
+                trial: selectedExperiment.trial,
+                cohort: selectedExperiment.cohort,
+                dataset: selectedDataset.name
+            }
+            onFetchDataset(query);
+        }
+    }, [selectedRig, selectedExperiment, selectedDataset, onFetchDataset]);
+
+    useEffect(() => {
+        if (datasetVideos == undefined) return
+        datasetVideosRef.current = datasetVideos;
+        const query = {
+            dataset: selectedDataset.name,
+            cohort: selectedExperiment.cohort,
+            rig: selectedRig.rig,
+            trial: selectedExperiment.trial
         };
-        setTimelines([...timelines, newTimeline]);
+        onFetchAnnotationTimelines(query)
+    }, [datasetVideos]);
+
+    const handleDeleteTimeline = (timeline) => {
+        if (window.confirm(`Delete timeline "${timeline.name}"?`)) {
+            onDeleteAnnotationTimeline(timeline.id); // saga/dispatch
+            if (selectedTimelineId === timeline.id) {
+                setSelectedTimelineId(null);
+            }
+        }
     };
+
+    const handleSelectAnnotation = (annotation, timeline) => {
+        setAnnotationStart(annotation.start_timestamp);
+        setAnnotationEnd(annotation.end_timestamp);
+        setAnnotationNote(annotation.note || "");
+        setSelectedTimelineId(timeline._id || timeline.id); // Keep track of context
+
+        // Jump to the timestamp
+        handleSliderChange(annotation.start_timestamp);
+    };
+    
+    const handleAddTimeline = () => {
+        const newTimeline = {
+            id: uuidv4(),
+            name: newTimelineName || "Untitled",
+            owner: newTimelineOwner || "Unknown",
+            color: newTimelineColor || "#007bff",
+            dataset: selectedDataset.name,
+            cohort: selectedExperiment.cohort,
+            rig: selectedRig.rig,
+            trial: selectedExperiment.trial,
+            annotations: [],
+        };
+
+        onAddAnnotationTimeline(newTimeline); // dispatch to saga/backend
+        setSelectedTimelineId(newTimeline.id);
+
+        // Reset modal + close
+        setNewTimelineName("");
+        setNewTimelineOwner("");
+        setNewTimelineColor("#007bff");
+        setShowModal(false);
+    };
+
 
     const getRandomColor = () => {
         const colors = ["blue", "red", "green", "purple", "orange"];
@@ -317,8 +423,6 @@ const VideoStreamer = (props) => {
 
         return leftDiff < rightDiff ? timestamps[left] : timestamps[right];
     };
-
-    const toggle = (id) => setOpen(open === id ? null : id);
 
     const handleJump = (videoFile, frameIndex) => {
         if (socket && socket.connected) {
@@ -365,217 +469,507 @@ const VideoStreamer = (props) => {
         }
     };
 
-    const handleSliderChange = (value, experimentId) => {
+    const handleSliderChange = (value) => {
+        const rawTimestamp = parseInt(value, 10); // use exact timestamp from slider
+        const timestampForVideo = rawTimestamp - 4 * 60 * 60 * 1000; // apply offset only for video lookup
 
-            const timestamp = parseInt(value, 10)- 4 * 60 * 60 * 1000;
+        currentTimestampRef.current = rawTimestamp; // keep slider aligned with what user clicked
 
-        // Find the current experiment
-        const experiment = experiments.find(exp => exp._id === experimentId);
-        currentTimestampRef.current = timestamp
-        setFps(experiment.fps)
-
-        var gaps = findGapsInTimestamps(experiment)
-        console.log(gaps)
-
-        // Find the video covering the timestamp
-        const currentVideo = experiment.videos.find(video => {
+        const videos = datasetVideosRef.current?.videos;
+        const currentVideoIndex = videos.findIndex(video => {
             const videoStart = new Date(video.start_timestamp).getTime();
             const videoEnd = new Date(video.end_timestamp).getTime();
-            return timestamp >= videoStart && timestamp <= videoEnd;
+            return timestampForVideo >= videoStart && timestampForVideo <= videoEnd;
         });
 
-        if (currentVideo) {
-            // Calculate the frame index
+        if (currentVideoIndex !== -1) {
+            const currentVideo = videos[currentVideoIndex];
             const videoStart = new Date(currentVideo.start_timestamp).getTime();
-            const elapsedTime = (timestamp - videoStart) / 1000; // Elapsed time in seconds
-            const frameIndex = Math.floor(elapsedTime * (experiment.fps || 30)); // Default to 30 fps
-            setCurrentFrameIndex(frameIndex)
-            setCurrentVideo(currentVideo.location)
-            console.log(`Video: ${currentVideo.location}`);
-            console.log(`Frame Index: ${frameIndex}`);
+            const elapsedTime = (timestampForVideo - videoStart) / 1000;
+            const frameIndex = Math.floor(elapsedTime * (videos.fps || 30));
 
-            handleJump(currentVideo.location, frameIndex)
+            setCurrentFrameIndex(frameIndex);
+            setCurrentVideo(currentVideo.location);
+            handleJump(currentVideo.location, frameIndex);
         } else {
-            console.log("No video found for the current timestamp.");
+            const nextVideo = videos.find(
+                (video) => new Date(video.start_timestamp).getTime() > timestampForVideo
+            );
+            if (nextVideo) {
+                setTimeout(() => {
+                    handleSliderChange(new Date(nextVideo.start_timestamp).getTime()+2);
+                }, 1000);
+            } else {
+                console.log("No more videos.");
+            }
         }
     };
+
+    const handleSaveAnnotation = () => {
+        if (!selectedTimelineId) {
+            console.warn("No timeline selected");
+            return;
+        }
+
+        const newAnnotation = {
+            start_timestamp: annotationStart,
+            end_timestamp: annotationEnd,
+            note: annotationNote,
+        };
+
+        const updatedTimelines = timelines.map((timeline) => {
+            if (timeline.id === selectedTimelineId) {
+                const updated = {
+                    ...timeline,
+                    annotations: [...timeline.annotations, newAnnotation],
+                };
+                // Persist to backend
+                onUpdateAnnotationTimeline(updated);
+                return updated;
+            }
+            return timeline;
+        });
+
+        setAnnotationMode(false);
+        setAnnotationStart(null);
+        setAnnotationEnd(null);
+        setAnnotationNote("");
+    };
+
+    const handleAnnotationSelect = (annotation) => {
+        currentTimestampRef.current = annotation.start_timestamp;
+        setAnnotationStart(annotation.start_timestamp);
+        setAnnotationEnd(annotation.end_timestamp);
+        setAnnotationNote(annotation.note);
+        setAnnotationMode(true);
+
+        const videoTime = annotation.start_timestamp - 4 * 60 * 60 * 1000;
+        const currentVideo = findCurrentVideo(videoTime); // your function
+        if (currentVideo) {
+            const videoStart = new Date(currentVideo.start_timestamp).getTime();
+            const frameIndex = Math.floor((videoTime - videoStart) / 1000 * (datasetVideos.fps || 30));
+            setCurrentVideo(currentVideo.location);
+            setCurrentFrameIndex(frameIndex);
+            handleJump(currentVideo.location, frameIndex);
+        }
+    };
+
+    const handleMouseDown = (event) => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+
+        const rect = canvas.getBoundingClientRect();
+        const x = event.clientX - rect.left;
+        const y = event.clientY - rect.top;
+
+        setDrawing(true);
+        setBoundingBox({ x, y, width: 0, height: 0 });
+    };
+
+    const handleMouseMove = (event) => {
+        if (!drawing || !boundingBox) return;
+
+        const canvas = canvasRef.current;
+        const rect = canvas.getBoundingClientRect();
+        const width = event.clientX - rect.left - boundingBox.x;
+        const height = event.clientY - rect.top - boundingBox.y;
+
+        setBoundingBox((prev) => ({ ...prev, width, height }));
+    };
+
+    const handleMouseUp = () => {
+        setDrawing(false);
+    };
+
+
+    let startTime = Date.now();
+    let endTime = Date.now();
+    let zoomMin = 0;
+    let zoomMax = 0;
+    let railBackground = "green";
+
+    if (selectedDataset && datasetVideos && datasetVideos.videos && datasetVideos.videos .length > 0) {
+        const sortedVideos = [...datasetVideos.videos].sort(
+            (a, b) => new Date(a.start_timestamp) - new Date(b.start_timestamp)
+        );
+
+        startTime = new Date(sortedVideos[0].start_timestamp).getTime();
+        endTime = new Date(sortedVideos[sortedVideos.length - 1].end_timestamp).getTime();
+
+        const zoomWindowSize = 5 * 60 * 1000;
+        zoomMin = Math.max(currentTimestampRef.current - zoomWindowSize, startTime);
+        zoomMax = Math.min(currentTimestampRef.current + zoomWindowSize, endTime);
+
+        const gaps = findGapsInTimestamps({ videos: sortedVideos });
+
+        const gradientStops = ["green 0%"];
+        gaps.forEach((gap) => {
+            const gapStart = ((new Date(gap.start) - startTime) / (endTime - startTime)) * 100;
+            const gapEnd = ((new Date(gap.end) - startTime) / (endTime - startTime)) * 100;
+            gradientStops.push(`green ${gapStart}%`);
+            gradientStops.push(`red ${gapStart}%`);
+            gradientStops.push(`red ${gapEnd}%`);
+            gradientStops.push(`green ${gapEnd}%`);
+        });
+        gradientStops.push("green 100%");
+        railBackground = `linear-gradient(to right, ${gradientStops.join(", ")})`;
+    }
 
     return (
         <div className="page-content">
             <Container fluid>
-                <Row>
-                    {experiments.map((experiment, index) => {
-                        const isOpen = open === index;
+                {/* RIGS */}
+                {!selectedRig && (
+                    <Row>
+                        {rigs.map((rig, i) => (
+                            <Col md={6} lg={4} key={i} className="mb-3">
+                                <Card>
+                                    <CardHeader>
+                                        <strong>{rig.rig}</strong>
+                                    </CardHeader>
+                                    <CardBody>
+                                        <p><strong>Description:</strong> {rig.description}</p>
+                                        <p><strong>Modalities:</strong> {rig.data_modalities.join(", ")}</p>
+                                        <p><strong>Experimenters:</strong> {rig.experimenters.join(", ")}</p>
+                                        {rig.animals.length > 0 && (
+                                            <p><strong>Animals:</strong> {rig.animals.join(", ")}</p>
+                                        )}
+                                        <Button color="primary" onClick={() => setSelectedRig(rig)}>
+                                            Select Rig
+                                        </Button>
+                                    </CardBody>
+                                </Card>
+                            </Col>
+                        ))}
+                    </Row>
+                )}
 
-                        const startTime = new Date(experiment.start_timestamp).getTime();
-                        const endTime = new Date(experiment.end_timestamp).getTime();
+                {/* EXPERIMENTS */}
+                {selectedRig && !selectedExperiment && (
+                    <>
+                        <Card className="mb-4">
+                            <CardHeader>
+                                <h4>{selectedRig.rig}</h4>
+                            </CardHeader>
+                            <CardBody>
+                                <p><strong>Description:</strong> {selectedRig.description}</p>
+                                <p><strong>Modalities:</strong> {selectedRig.data_modalities.join(", ")}</p>
+                                <Button color="secondary" onClick={() => setSelectedRig(null)}>
+                                    ← Back to Rigs
+                                </Button>
 
-                        return (
-                            <Card key={experiment._id} className="mb-3">
-                                {/* Full-Width Header */}
-                                <CardHeader
-                                    onClick={() => toggle(index)}
-                                    className="d-flex justify-content-between align-items-center bg-light"
-                                    style={{ width: "100%" }}
-                                >
-                                  <div>
-                                      <Row>
-                                            <Col md={8}>
-                                                <strong>Experiment:</strong> {experiment.experiment}
-                                            </Col>
-                                     </Row>
-                                    <Row>
-                                         <Col md={8}>
-                                             <strong>Description:</strong> {experiment.description}
-                                         </Col>
-                                    </Row>
-                                    <Row>
-                                            <Col md={4}>
-                                                <strong>Trial:</strong> {experiment.trial}
-                                            </Col>
-                                    </Row>
-                                    <Row>
-                                            <Col md={4}>
-                                                <strong>FPS:</strong> {experiment.fps}
-                                            </Col>
-                                        </Row>
-                                        <Row>
-                                            <Col md={6}>
-                                                <strong>Start:</strong>{" "}
-                                                {new Date(
-                                                    experiment.start_timestamp
-                                                ).toLocaleString()}
-                                            </Col>
-                                            <Col md={6}>
-                                                <strong>End:</strong>{" "}
-                                                {new Date(experiment.end_timestamp).toLocaleString()}
-                                            </Col>
-                                        </Row>
-                                  </div>
-                                    <div>{isOpen ? "▼" : "▶"}</div>
-                                </CardHeader>
+                            {selectedRig.experiments.map((exp, i) => (
+                                <Row>
+                                <Col md={12} key={i} style={{marginTop: "10px", marginBottom: "10px"}}>
+                                    <Card>
+                                        <CardHeader>
+                                            <b>Trial {exp.trial}, Cohort {exp.cohort}</b><br/>
+                                            <strong>Description:</strong> {exp.description || "—"}<br/>
+                                            <strong>Start:</strong> {new Date(exp.start_date).toLocaleString()}<br/>
+                                        <strong>End:</strong> {new Date(exp.end_date).toLocaleString()}<br/>
+                                            <Button color="primary" onClick={() => setSelectedExperiment(exp)}>
+                                                Select Experiment
+                                            </Button>
+                                        </CardHeader>
+                                    </Card>
+                                </Col>
+                                </Row>
+                            ))}
+                            </CardBody>
+                        </Card>
+                    </>
+                )}
 
-                                {/* Expandable Section */}
-                                <Collapse isOpen={isOpen}>
-                                    <CardBody className="p-3">
-                                        {/* Video Frame */}
-                                        <div>
-                                                <canvas
-                                                    ref={canvasRef}
-                                                    style={{
-                                                        width: "100%",
-                                                        border: "1px solid #ccc",
-                                                        marginBottom: "20px",
-                                                    }}
-                                                />
+                {/* DATASETS */}
+                {selectedExperiment && !selectedDataset && (
+                    <>
+                        <Card className="mb-12">
+                            <CardHeader>
+                                <h4>{selectedRig.rig}</h4>
+                                <h4> Cohort {selectedExperiment.cohort}, Trial {selectedExperiment.trial}</h4>
+                            </CardHeader>
+                            <CardBody>
+                                <p><strong>Description:</strong> {selectedExperiment.description || "—"}</p>
+                                <p><strong>Start:</strong> {new Date(selectedExperiment.start_date).toLocaleString()}</p>
+                                <p><strong>End:</strong> {new Date(selectedExperiment.end_date).toLocaleString()}</p>
+                                <Button color="secondary" onClick={() => setSelectedExperiment(null)}>
+                                    ← Back to Experiments
+                                </Button>
+                            </CardBody>
+                        </Card>
 
-                                        </div>
+                        <Row>
+                            <Col md={12}>
+                                <Card className="ps-4">
+                                    <CardHeader>
+                                        <h5>Datasets</h5>
+                                    </CardHeader>
+                                    <CardBody>
+                                        {selectedExperiment.datasets.map((ds, i) => (
+                                            <Row key={i} className="align-items-center mb-2">
+                                                <Col md={6}><strong>{ds.name}</strong> ({ds.sensor})</Col>
+                                                <Col md="auto">
+                                                    <Button color="primary" onClick={() => setSelectedDataset(ds)}>
+                                                        Select Dataset
+                                                    </Button>
+                                                </Col>
+                                            </Row>
+                                        ))}
+                                    </CardBody>
+                                </Card>
+                            </Col>
+                        </Row>
 
-                                        {/* Timeline Slider */}
-                                        <div className="d-flex flex-column align-items-center mb-3">
-                                            {/* Slider Labels: Start and End */}
-                                            <div className="d-flex justify-content-between w-100 mb-2">
-                                                <div>
-                                                    <strong>Start:</strong>{" "}
-                                                    {new Date(startTime).toLocaleString(undefined, {
-                                                        month: "2-digit",
-                                                        day: "2-digit",
-                                                        year: "numeric",
-                                                        hour: "2-digit",
-                                                        minute: "2-digit",
-                                                        second: "2-digit",
-                                                    })}
-                                                </div>
-                                                <div>
-                                                    <strong>End:</strong>{" "}
-                                                    {new Date(endTime).toLocaleString(undefined, {
-                                                        month: "2-digit",
-                                                        day: "2-digit",
-                                                        year: "numeric",
-                                                        hour: "2-digit",
-                                                        minute: "2-digit",
-                                                        second: "2-digit",
-                                                    })}
-                                                </div>
-                                            </div>
-                                            <input
-                                                type="range"
-                                                min={startTime}
-                                                max={endTime}
-                                                value={currentTimestampRef.current}
-                                                className="form-range"
-                                                style={{ width: "100%" }}
-                                                onChange={(e) =>
-                                                    handleSliderChange(e.target.value, experiment._id)
+                    </>
+                )}
+
+                {/* DATASET SELECTED */}
+                {selectedDataset && (
+                    <Card className="mb-4">
+                        <CardHeader>
+                            <h4>{selectedDataset.name}</h4>
+                        </CardHeader>
+                        <CardBody>
+                            <p><strong>Sensor:</strong> {selectedDataset.sensor}</p>
+                            <Button color="secondary" onClick={() => setSelectedDataset(null)}>
+                                ← Back to Datasets
+                            </Button>
+
+                            {/* Video Frame */}
+                                <div className="d-flex gap-4">
+                                    {/* Canvas */}
+                                    <div style={{flex: 3}}>
+                                        <canvas
+                                            ref={(el) => {
+                                                if (el) {
+                                                    canvasRef.current = el;
+                                                } else {
+                                                    canvasRef.current = undefined;
                                                 }
+                                            }}
+                                            width={700}
+                                            height={480}
+                                            onMouseDown={handleMouseDown}
+                                            onMouseMove={handleMouseMove}
+                                            onMouseUp={handleMouseUp}
+                                            style={{
+                                                border: "1px solid #ccc",
+                                                width: "75%",
+                                                maxWidth: "75%",
+                                            }}
+                                        />
+                                    </div>
+
+                                    {/* Annotation Controls */}
+                                    <div style={{flex: 1}}>
+                                        <Button color="primary" onClick={() => {
+                                            setAnnotationMode(true);
+                                            setAnnotationStart(null);
+                                            setAnnotationEnd(null);
+                                            setAnnotationNote("");
+                                        }}>
+                                            Add Annotation
+                                        </Button>
+
+                                        <div className="mt-3">
+                                            <Button
+                                                color="primary"
+                                                className="mb-2"
+                                                onClick={() => setAnnotationStart(currentTimestampRef.current)}
+                                                disabled={!annotationMode || annotationStart !== null}
+                                            >
+                                                Set Start
+                                            </Button>
+
+                                            <Button
+                                                color="primary"
+                                                className="mb-2"
+                                                onClick={() => setAnnotationEnd(currentTimestampRef.current)}
+                                                disabled={!annotationMode || annotationEnd !== null || annotationStart === null}
+                                            >
+                                                Set End
+                                            </Button>
+
+                                            <textarea
+                                                className="form-control mb-2"
+                                                rows={4}
+                                                placeholder="Enter annotation note..."
+                                                value={annotationNote}
+                                                onChange={(e) => setAnnotationNote(e.target.value)}
+                                                disabled={!annotationMode}
+                                            />
+
+                                            <Button
+                                                color="success"
+                                                onClick={handleSaveAnnotation}
+                                                disabled={
+                                                    !annotationMode || !annotationStart || !annotationEnd || !annotationNote.trim()
+                                                }
+                                            >
+                                                Save Annotation
+                                            </Button>
+                                        </div>
+                                    </div>
+
+                            </div>
+
+                            {/* Timeline Slider */}
+                            <div className="d-flex flex-column align-items-center mb-3">
+                                <div className="d-flex justify-content-between w-100 mb-2">
+                                    <div>
+                                        <strong>Start:</strong>{" "}
+                                        {new Date(startTime).toLocaleString()}
+                                    </div>
+                                    <div>
+                                        <strong>End:</strong>{" "}
+                                        {new Date(endTime).toLocaleString()}
+                                    </div>
+                                </div>
+                                <input
+                                    type="range"
+                                    min={startTime}
+                                    max={endTime}
+                                    value={currentTimestampRef.current}
+                                    className="form-range"
+                                    style={{width: "100%"}}
+                                    onChange={(e) =>
+                                        handleSliderChange(parseInt(e.target.value))
+                                    }
+                                />
+
+                            </div>
+
+                            {/* Time & Annotation Controls */}
+                            <div className="text-center mb-3">
+                                <strong>Current Time:</strong>{" "}
+                                {new Date(parseInt(currentTimestampRef.current)).toLocaleString()}
+                            </div>
+
+                            {/* Start/Stop */}
+                            <div className="d-flex justify-content-center gap-3 mb-3">
+                                <Button color="success" onClick={handleStartStreaming}>Play</Button>
+                                <Button color="danger" onClick={handleStopStreaming}>Stop</Button>
+                            </div>
+
+                            {/* Timelines */}
+                            <div>
+                                <Button color="primary" onClick={() => setShowModal(true)}>
+                                    Add New Timeline
+                                </Button>
+
+                                <div className="annotation-timelines">
+                                    {timelines.map((timeline) => (
+                                        <div
+                                            key={timeline.id}
+                                            className={`border rounded p-3 mb-3 timeline-box ${timeline.id === selectedTimelineId ? "border-primary bg-light" : "cursor-pointer"}`}
+                                            onClick={() => setSelectedTimelineId(timeline.id)}
+                                            style={{ transition: "0.2s", cursor: "pointer" }}
+                                        >
+                                            <div className="d-flex justify-content-between align-items-start mb-2">
+                                                <div>
+                                                    <h5 className="mb-1">{timeline.name}</h5>
+                                                    <div className="text-muted small">
+                                                        <div>Owner: {timeline.owner}</div>
+                                                        <div>Created: {new Date(timeline.createdDate).toLocaleDateString()}</div>
+                                                    </div>
+                                                </div>
+
+                                                <Button
+                                                    size="sm"
+                                                    color="danger"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation(); // Prevent selection when deleting
+                                                        handleDeleteTimeline(timeline);
+                                                    }}
+                                                    title="Delete timeline"
+                                                >
+                                                    <i className="fas fa-trash-alt"></i>
+                                                </Button>
+                                            </div>
+
+                                            <AnnotatedTimeline
+                                                timeline={timeline}
+                                                onSelectAnnotation={handleAnnotationSelect}
+                                                videoDuration={endTime - startTime}
+                                                startTime={startTime}
+                                                currentTime={currentTimestampRef.current}
+                                                onSelectAnnotation={(annotation) => handleSelectAnnotation(annotation, timeline)}
                                             />
                                         </div>
+                                    ))}
 
-                                        {/* Current Time Display */}
-                                        <div className="text-center mb-3">
-                                            <strong>Current Time:</strong>{" "}
-                                            {new Date(parseInt(currentTimestampRef.current)).toLocaleString(
-                                                undefined,
-                                                {
-                                                    month: "2-digit",
-                                                    day: "2-digit",
-                                                    year: "numeric",
-                                                    hour: "2-digit",
-                                                    minute: "2-digit",
-                                                    second: "2-digit",
-                                                }
-                                            )}
-                                        </div>
+                                </div>
+                            </div>
+                        </CardBody>
+                    </Card>
+                )}
 
-                                        {/* Start/Stop Buttons */}
-                                        <div className="d-flex justify-content-center gap-3">
-                                            <Button color="success"  onClick={() =>
-                                                handleStartStreaming()
-                                            }>Start</Button>
-                                            <Button color="danger"  onClick={() =>
-                                                handleStopStreaming()
-                                            }>Stop</Button>
-                                        </div>
-                                        <div>
-                                            <button onClick={addTimeline}>Add New Timeline</button>
-                                            <div className="annotation-timelines">
-                                                {timelines.map((timeline) => (
-                                                    <AnnotatedTimeline
-                                                        key={timeline.id}
-                                                        timeline={timeline}
-                                                        videoDuration={endTime - startTime}
-                                                        startTime={startTime}
-                                                        currentTime={currentTimestampRef.current}
-                                                    />
-                                                ))}
-                                            </div>
-                                        </div>
-                                    </CardBody>
-                                </Collapse>
-                            </Card>
-                        );
-                    })}
-                </Row>
             </Container>
+
+            <Modal isOpen={showModal} toggle={() => setShowModal(false)}>
+                <ModalHeader toggle={() => setShowModal(false)}>Create New Timeline</ModalHeader>
+                <ModalBody>
+                    <Form>
+                        <FormGroup>
+                            <Label for="timelineName">Name</Label>
+                            <Input
+                                id="timelineName"
+                                value={newTimelineName}
+                                onChange={(e) => setNewTimelineName(e.target.value)}
+                            />
+                        </FormGroup>
+                        <FormGroup>
+                            <Label for="timelineOwner">Owner</Label>
+                            <Input
+                                id="timelineOwner"
+                                value={newTimelineOwner}
+                                onChange={(e) => setNewTimelineOwner(e.target.value)}
+                            />
+                        </FormGroup>
+                        <FormGroup>
+                            <Label for="timelineColor">Color</Label>
+                            <Input
+                                type="color"
+                                id="timelineColor"
+                                value={newTimelineColor}
+                                onChange={(e) => setNewTimelineColor(e.target.value)}
+                            />
+                        </FormGroup>
+                    </Form>
+                </ModalBody>
+                <ModalFooter>
+                    <Button color="primary" onClick={handleAddTimeline}>
+                        Save
+                    </Button>{" "}
+                    <Button color="secondary" onClick={() => setShowModal(false)}>
+                        Cancel
+                    </Button>
+                </ModalFooter>
+            </Modal>
+
         </div>
+
+
     );
+
+
 };
-const mapStateToProps = ({ dataquery }) => ({
-    experiments: dataquery.experiments.map((experiment) => ({
-        ...experiment,
-        videos: experiment.videos
-            ? experiment.videos.sort(
-                (a, b) =>
-                    new Date(a.start_timestamp).getTime() -
-                    new Date(b.start_timestamp).getTime()
-            )
-            : [],
-    })),
-});
+const mapStateToProps = ({ dataquery }) => {
+return ({
+    rigs: dataquery.experiments,
+    datasetVideos: dataquery.datasetVideos[0],
+    timelines: dataquery.timelines
+})
+}
 
 
 const mapDispatchToProps = (dispatch) => ({
     onFetchExperiments: () => dispatch(getExperiments()),
+    onFetchDataset: (query) => dispatch(getDataset(query)),
+    onFetchAnnotationTimelines: (query) => dispatch(getAnnotationTimeline(query)),
+    onAddAnnotationTimeline: (timeline) => dispatch(addAnnotationTimeline(timeline)),
+    onDeleteAnnotationTimeline: (timeline) => dispatch(deleteAnnotationTimeline(timeline)),
+    onUpdateAnnotationTimeline: (timeline) => dispatch(updateAnnotationTimeline(timeline)),
 });
 
 export default connect(mapStateToProps, mapDispatchToProps)(VideoStreamer);
