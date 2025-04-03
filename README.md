@@ -11,11 +11,9 @@
 - Copyright: 2023 Howard Hughes Medical Institute
 ```
 
-# Usage
-
-
 ## Overview
- The frontend is a GUI that can be used as a dashboard for controlling your experiment, viewing status on embedded sensors or actuators in your system, and effectively retrieving data collected during the experiment.  It uses React to provide a flexible web application that can be deployed easily and accessed over the Internet.  It uses a bridge technology called [ROSBridge ](https://wiki.ros.org/rosbridge_suite)! to connect to the Habitat ROS communication hub.  It also connects to the database through a Mongoose File Server to retrieve videos and data.
+![ ](../docs/habitat_GUI.png)
+The Habitat GUI is the main visual interface for controlling your Habitat Behavioral setup.  It runs as a web application, but can connect over ROS2 on your local network to do introspection on your Habitat nodes.  It contains a Dashboard with separate pages for controlling your experiment, viewing status on embedded sensors/actuators in your system, and data visualizers for reviewing and annotating your sensor data.  It uses a bridge technology called [ROSBridge ](https://wiki.ros.org/rosbridge_suite)! to connect to the Habitat ROS communication hub.  It also connects to the database through a Mongoose File Server to retrieve videos and data.
     
 ## Installation
 You will need node and npm installed in order to run the webserver.  You can set up Node by following these [instructions](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm).  Once Node/NPM is set up, there are 3 necessary components to set up the Frontend. 
