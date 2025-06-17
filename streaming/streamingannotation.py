@@ -34,9 +34,9 @@ STREAM_TIMEOUT = 60
 shutdown_event = threading.Event()  # Event to signal shutdown to threads
 
 # MongoDB connection
-dbUri = "rat-burrow-mongodb"
-dbUser = "david"
-dbPassword = "AiEshteRat13Burrow!"
+dbUri = ""
+dbUser = ""
+dbPassword = ""
 dbAuthSource = "admin"
 
 client = MongoClient(
