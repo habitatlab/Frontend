@@ -5,7 +5,7 @@ const routes = require('./routes')
 
 // Connect to MongoDB database
 mongoose
-	.connect('mongodb://david:AiEshteRat13Burrow!@rat-burrow-mongodb:27017/ratburrow?authSource=admin', { useNewUrlParser: true })
+	.connect(':27017/ratburrow?authSource=admin', { useNewUrlParser: true })
         .then(() => {
 	    const app = express()
 	
